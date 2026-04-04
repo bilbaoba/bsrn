@@ -190,6 +190,21 @@ LR_SPECS = {
         "humidity":    {"label": "Relative humidity at downward long-wave instrument height", "format": "F5.1", "missing": -99.9, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
         "pressure":    {"label": "Pressure at downward long-wave instrument height", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"}
     },
+    "LR0300": {
+        "yearMonth":   {"label": "Year and month of measurement ('YYYY-MM')", "format": "A7", "missing": None, "mandatory": True, "default": None, "validate_func": "genericValidateFunction"},
+        "swu_avg":     {"label": "Short-wave upward mean", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "swu_std":     {"label": "Short-wave upward standard deviation", "format": "F5.1", "missing": -99.9, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "swu_min":     {"label": "Short-wave upward minimum", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "swu_max":     {"label": "Short-wave upward maximum", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "lwu_avg":     {"label": "Long-wave upward mean", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "lwu_std":     {"label": "Long-wave upward standard deviation", "format": "F5.1", "missing": -99.9, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "lwu_min":     {"label": "Long-wave upward minimum", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "lwu_max":     {"label": "Long-wave upward maximum", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "net_avg":     {"label": "Net radiation mean", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "net_std":     {"label": "Net radiation standard deviation", "format": "F5.1", "missing": -99.9, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "net_min":     {"label": "Net radiation minimum", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"},
+        "net_max":     {"label": "Net radiation maximum", "format": "I4", "missing": -999, "mandatory": False, "default": None, "validate_func": "LR0100_validateFunction"}
+    },
     # BSRN: If the monthly file includes LR4000 (or LR4nnn), LR0003 must embed one ``@LR4000CONST`` (or
     # ``@LR4nnnCONST``) line per pyrgeometer whose raw data appear in that LR (e.g. two lines for
     # downward- and upward-facing LW). Template:

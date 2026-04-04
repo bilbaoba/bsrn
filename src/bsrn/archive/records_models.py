@@ -26,6 +26,7 @@ ConstScalar = Union[str, int, float]
 MinuteVector = Optional[Union[pd.Series, np.ndarray]]
 
 _LR0100_MINUTE_FIELDS = tuple(k for k in LR_SPECS["LR0100"] if k != "yearMonth")
+_LR0300_MINUTE_FIELDS = tuple(k for k in LR_SPECS["LR0300"] if k != "yearMonth")
 _LR4000_MINUTE_FIELDS = tuple(k for k in LR_SPECS["LR4000"] if k != "yearMonth")
 
 
@@ -195,10 +196,8 @@ def _validate_minute_vector(v, field_name: str, lr_code: str, year_month: object
         return v
     import bsrn.archive.validation as val_module
 
-    fn = _validation_callable(
-        val_module,
-        "LR0100_validateFunction" if lr_code == "LR0100" else "LR4000_validateFunction",
-    )
+    vfn = "LR4000_validateFunction" if lr_code == "LR4000" else "LR0100_validateFunction"
+    fn = _validation_callable(val_module, vfn)
     try:
         clean = fn(v, yearMonth=year_month)
     except Exception as e:
@@ -240,6 +239,34 @@ class LR0100(ArchiveRecordBase):
     @classmethod
     def _validate_minute_lr0100(cls, v, info: ValidationInfo):
         return _validate_minute_vector(v, info.field_name, "LR0100", info.data.get("yearMonth"))
+
+
+class LR0300(ArchiveRecordBase):
+    """
+    LR0300 reflected / upward radiation minute block (SWU, LWU, Net).
+    LR0300 反射/上行辐射分钟块（短波上行、长波上行、净辐射）。
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=False, arbitrary_types_allowed=True)
+
+    yearMonth: lr_spec("LR0300", "yearMonth", str)
+    swu_avg: MinuteVector = lr_spec_field("LR0300", "swu_avg", default=None)
+    swu_std: MinuteVector = lr_spec_field("LR0300", "swu_std", default=None)
+    swu_min: MinuteVector = lr_spec_field("LR0300", "swu_min", default=None)
+    swu_max: MinuteVector = lr_spec_field("LR0300", "swu_max", default=None)
+    lwu_avg: MinuteVector = lr_spec_field("LR0300", "lwu_avg", default=None)
+    lwu_std: MinuteVector = lr_spec_field("LR0300", "lwu_std", default=None)
+    lwu_min: MinuteVector = lr_spec_field("LR0300", "lwu_min", default=None)
+    lwu_max: MinuteVector = lr_spec_field("LR0300", "lwu_max", default=None)
+    net_avg: MinuteVector = lr_spec_field("LR0300", "net_avg", default=None)
+    net_std: MinuteVector = lr_spec_field("LR0300", "net_std", default=None)
+    net_min: MinuteVector = lr_spec_field("LR0300", "net_min", default=None)
+    net_max: MinuteVector = lr_spec_field("LR0300", "net_max", default=None)
+
+    @field_validator(*_LR0300_MINUTE_FIELDS, mode="after")
+    @classmethod
+    def _validate_minute_lr0300(cls, v, info: ValidationInfo):
+        return _validate_minute_vector(v, info.field_name, "LR0300", info.data.get("yearMonth"))
 
 
 class LR4000(ArchiveRecordBase):

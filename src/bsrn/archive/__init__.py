@@ -22,6 +22,7 @@ from .records_models import (
     LR0007,
     LR0008,
     LR0100,
+    LR0300,
     LR4000,
     LR4000CONST,
 )
@@ -53,6 +54,7 @@ __all__ = [
     "LR0007",
     "LR0008",
     "LR0100",
+    "LR0300",
     "LR4000",
     "LR4000CONST",
     "get_azimuth_elevation",
