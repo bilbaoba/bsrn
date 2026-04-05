@@ -80,7 +80,7 @@ def _qc_marker_slices(df, mask, ycol, param_facet, level, chunks):
 
 def _build_qc_marker_frame(day_df, day_zenith, station_code):
     """
-    Per-minute QC failures for faceted timeseries (Levels 1–6; Wong [2–6] + black, distinct shapes).
+    Per-minute QC failures for faceted daily (Levels 1–6; Wong [2–6] + black, distinct shapes).
     分面时间序列用的逐分钟 QC 失败点（1–6 级；Wong 五色 + 黑，各级不同形状）。
     """
     if station_code is None:
@@ -148,12 +148,16 @@ def _build_qc_marker_frame(day_df, day_zenith, station_code):
     return out
 
 
-def _load_month_archive_for_timeseries(file_path, station_code, apply_qc):
+def _load_month_archive_for_daily(file_path, station_code, apply_qc,
+                                       df=None):
     """
     Load one month from archive, add geometry, optional clearsky and PPL masking.
     加载单月存档，加入几何、可选晴空与 PPL 掩膜。
     """
-    plot_df = BSRNDataset.from_file(file_path).data()
+    if df is not None:
+        plot_df = df.copy()
+    else:
+        plot_df = BSRNDataset.from_file(file_path).data()
 
     unique_months = np.unique(plot_df.index.to_period("M"))
     if len(unique_months) != 1:
@@ -186,7 +190,7 @@ def _load_month_archive_for_timeseries(file_path, station_code, apply_qc):
     return plot_df.sort_index(), zenith
 
 
-def _ggplot_bsrn_timeseries_one_day(
+def _ggplot_bsrn_daily_one_day(
     day_df, day_zenith, title=None, station_code=None, show_qc_markers=True
 ):
     """
@@ -414,15 +418,9 @@ def _ggplot_bsrn_timeseries_one_day(
     return sum(layers[1:], layers[0])
 
 
-def plot_bsrn_timeseries_day(
-    file_path,
-    day,
-    station_code=None,
-    apply_qc=False,
-    show_qc_markers=True,
-    output_file=None,
-    title=None,
-):
+def plot_bsrn_daily_day(file_path, day, station_code=None,
+                             apply_qc=False, show_qc_markers=True,
+                             output_file=None, title=None, df=None):
     """
     Plot one UTC day from a single-month BSRN archive (same layout as each booklet page).
     从单月 BSRN 存档绘制一个 UTC 日（版式与手册单页相同）。
@@ -458,8 +456,8 @@ def plot_bsrn_timeseries_day(
         The figure; display in notebooks with the last expression or call ``.draw()``.
         图形对象；笔记本中作为最后一行显示或调用 ``.draw()``。
     """
-    plot_df, zenith = _load_month_archive_for_timeseries(
-        file_path, station_code, apply_qc
+    plot_df, zenith = _load_month_archive_for_daily(
+        file_path, station_code, apply_qc, df=df
     )
 
     idx_tz = getattr(plot_df.index, "tz", None)
@@ -481,7 +479,7 @@ def plot_bsrn_timeseries_day(
 
     day_zenith = zenith.loc[day_df.index]
 
-    p = _ggplot_bsrn_timeseries_one_day(
+    p = _ggplot_bsrn_daily_one_day(
         day_df,
         day_zenith,
         title,
@@ -493,14 +491,9 @@ def plot_bsrn_timeseries_day(
     return p
 
 
-def plot_bsrn_timeseries_booklet(
-    file_path,
-    output_file,
-    station_code=None,
-    apply_qc=False,
-    show_qc_markers=True,
-    title=None,
-):
+def plot_bsrn_daily_booklet(file_path, output_file, station_code=None,
+                                 apply_qc=False, show_qc_markers=True,
+                                 title=None, df=None):
     """
     Generate a multi-page PDF booklet where each day is one page from a BSRN archive file.
     从 BSRN 存档文件生成多页 PDF 手册，每一天占一页。
@@ -532,15 +525,15 @@ def plot_bsrn_timeseries_booklet(
         The function saves the plots to the specified PDF file.
         该函数将图表保存到指定的 PDF 文件中。
     """
-    plot_df, zenith = _load_month_archive_for_timeseries(
-        file_path, station_code, apply_qc
+    plot_df, zenith = _load_month_archive_for_daily(
+        file_path, station_code, apply_qc, df=df
     )
 
     print(f"Generating PDF booklet: {output_file}...")
     with PdfPages(output_file) as pdf:
         for _, day_df in plot_df.groupby(plot_df.index.date):
             day_zenith = zenith.loc[day_df.index]
-            p = _ggplot_bsrn_timeseries_one_day(
+            p = _ggplot_bsrn_daily_one_day(
                 day_df,
                 day_zenith,
                 title,

@@ -66,6 +66,10 @@ ds = bsrn.BSRNDataset.from_file("data/QIQ/qiq0125.dat.gz")
 df = ds.add_solpos()
 df = ds.add_clearsky()
 df = ds.run_qc()
+
+# Visualize directly from the dataset (requires bsrn[viz])
+ds.plot.daily("1995-01-15")  # plots a single day
+ds.plot.table()              # generates a QC summary table
 ```
 
 ### Quick Example — Functional API

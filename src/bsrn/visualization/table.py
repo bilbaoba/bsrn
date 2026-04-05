@@ -12,7 +12,7 @@ from plotnine import (
     scale_fill_manual, theme_minimal,
 )
 
-def plot_qc_table(daily_stats, title=None, output_file=None):
+def plot_table(daily_stats, title=None, output_file=None):
     """
     Plot QC statistics in a table-like heatmap format.
     以类似于表格的热图格式绘制 QC 统计数据。
@@ -26,8 +26,8 @@ def plot_qc_table(daily_stats, title=None, output_file=None):
         Plot title. If None (default), no title is drawn.
         图表标题；默认 None 不显示。
     output_file : str, optional
-        Path to save the plot (e.g., 'qc_table.png').
-        保存图表的路径（例如 'qc_table.png'）。
+        Path to save the plot (e.g., 'table.png').
+        保存图表的路径（例如 'table.png'）。
 
     Returns
     -------

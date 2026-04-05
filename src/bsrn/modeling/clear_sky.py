@@ -653,11 +653,10 @@ def add_clearsky_columns(df, station_code=None, lat=None, lon=None, elev=None,
                     f"Geometrical error: Generating clear-sky models on low-frequency data (timestep ≈ {median_dt}) "
                     "introduces severe inaccuracies. Always calculate clear-sky at high resolution (e.g., 1-minute)."
                 )
-        from bsrn.physics.geometry import get_solar_position, get_bni_extra
-        solpos = get_solar_position(df.index, lat=lat, lon=lon, elev=elev)
-        zenith = solpos["zenith"]
-        apparent_zenith = solpos["apparent_zenith"]
-        bni_extra = get_bni_extra(df.index)
+        solpos = geometry.get_solar_position(df.index, lat=lat, lon=lon, elev=elev)
+        zenith = solpos["zenith"].round(3)
+        apparent_zenith = solpos["apparent_zenith"].round(3)
+        bni_extra = geometry.get_bni_extra(df.index).round(3)
     else:
         zenith = df["zenith"]
         apparent_zenith = df["apparent_zenith"]

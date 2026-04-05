@@ -278,6 +278,15 @@ class BSRNDataset(BaseModel):
 
         return self._df_cache.assign(**extra)
 
+    @property
+    def plot(self):
+        """
+        Accessor for built-in plotting routines.
+
+        内置绘图程序的适配器。
+        """
+        return BSRNPlot(self)
+
     # ------------------------------------------------------------------ #
     #  Pipeline methods (delegate to standalone functions)                  #
     #  管线方法（委托给独立函数）                                           #
@@ -409,3 +418,111 @@ class BSRNDataset(BaseModel):
                 n = len(vec)
                 return expected_1min // n
         return 1
+
+# ---------------------------------------------------------------------- #
+#  BSRNPlot Accessor Class
+# ---------------------------------------------------------------------- #
+
+class BSRNPlot:
+    """
+    Visualization accessor for BSRNDataset.
+    
+    BSRNDataset 的可视化适配器。
+    """
+
+    def __init__(self, ds: "BSRNDataset"):
+        self._ds = ds
+
+    def __call__(self, dates, output_file=None, **kwargs):
+        """
+        Default to daily time series plot.
+        默认为画日时间序列图。
+        """
+        return self.daily(dates, output_file=output_file, **kwargs)
+
+    def daily(self, dates, output_file=None, **kwargs):
+        """
+        Plot daily daily plots (automatically delegates to day or booklet mode).
+        画时间序列图（根据输入的日期自动生成单日图或多页手册图）。
+
+        Parameters
+        ----------
+        dates : str, pd.Timestamp, or sequence
+            Date or dates to plot.
+            绘图日期或日期序列。
+        output_file : str
+            Output path for the plot.
+            输出图像的路径。
+
+        Returns
+        -------
+        None
+        """
+        import numpy as np
+        import pandas as pd
+        from .visualization.daily import (
+            plot_bsrn_daily_day,
+            plot_bsrn_daily_booklet,
+        )
+
+        df = self._ds.data()
+
+        is_multi = isinstance(dates, (list, tuple, pd.Index, np.ndarray)) and len(dates) > 1
+
+        if is_multi:
+            # Filter the dataframe to only include the requested dates
+            date_objs = pd.to_datetime(dates).date
+            mask = np.isin(df.index.date, date_objs)
+            filtered_df = df.loc[mask].copy()
+
+            return plot_bsrn_daily_booklet(
+                file_path=None,
+                output_file=output_file,
+                station_code=self._ds.station_code,
+                df=filtered_df,
+                **kwargs,
+            )
+        else:
+            # Single date given
+            date_to_plot = dates[0] if isinstance(dates, (list, tuple, pd.Index, np.ndarray)) else dates
+            return plot_bsrn_daily_day(
+                file_path=None,
+                day=date_to_plot,
+                station_code=self._ds.station_code,
+                output_file=output_file,
+                df=df,
+                **kwargs,
+            )
+
+    def table(self, output_file=None, title=None):
+        """
+        Plot the QC results summary table.
+        画质量控制结果汇总表。
+
+        Parameters
+        ----------
+        output_file : str, optional
+            Output path for the plot.
+            输出图像的路径。
+        title : str, optional
+            Plot title.
+            图表标题。
+
+        Returns
+        -------
+        None
+        """
+        from .visualization.table import plot_table
+        from .utils.quality import get_daily_stats
+
+        daily_stats = get_daily_stats(
+            self._ds.data(),
+            self._ds.lat,
+            self._ds.lon,
+            self._ds.elev,
+            station_code=self._ds.station_code,
+        )
+
+        return plot_table(daily_stats, title=title, output_file=output_file)
+
+
