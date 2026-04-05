@@ -3,45 +3,48 @@ Central BSRN dataset: one monthly station file as a typed, validated object.
 
 Encapsulates station identity, resolved geographic metadata, and minute-
 resolution data in a single Pydantic model. ``lr0100`` is the source of
-truth for minute data; ``data`` is a computed ``DataFrame`` view.
-Pipeline methods (solar position, clear-sky, QC) are chainable and
-delegate to the existing standalone functions.
+truth for minute data; ``data()`` returns a cached ``DataFrame`` with
+only the mean/value columns by default. LR0300 / LR4000 columns are
+available on demand via ``data(include=[...])``. Pipeline methods
+(solar position, clear-sky, QC) mutate the cached frame in-place.
 
 BSRN 中心数据集：将一个月度站点文件封装为带类型校验的对象。``lr0100``
-为分钟数据源；``data`` 是由其派生的 ``DataFrame`` 视图。管线方法
-（太阳位置、晴空、QC）可链式调用，底层委托给已有独立函数。
+为分钟数据源；``data()`` 返回仅含均值列的缓存 ``DataFrame``。
+LR0300 / LR4000 列按需通过 ``data(include=[...])`` 获取。管线方法
+直接修改缓存帧。
 """
 
 from __future__ import annotations
 
 import calendar
-from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from pydantic import (BaseModel, ConfigDict,
+from pydantic import (BaseModel, ConfigDict, PrivateAttr,
                       field_validator, model_validator)
 
 from .archive.records_models import LR0100, LR0300, LR4000
 from .constants import BSRN_STATIONS
-from .io.reader import (
-    _LR0100_MINUTE_COLS,
-    _LR0300_MINUTE_COLS,
-    _LR4000_MINUTE_COLS,
-    read_bsrn_archive,
-)
+from .io.reader import read_bsrn_archive
 
-# Short aliases for LR0100 / LR0300 means, matching the column names
-# expected by downstream functions (QC, clear-sky, visualization).
-# LR0100 / LR0300 均值的短别名，与下游函数所用列名一致。
-_LR0100_SHORT_ALIASES = {
+# Variable maps: LR field name → short column name exposed by data().
+# Only these columns appear; _std/_min/_max are dropped.
+# 变量映射：LR 字段名 → data() 暴露的短列名。
+_LR0100_VAR_MAP = {
     "ghi_avg": "ghi", "bni_avg": "bni",
     "dhi_avg": "dhi", "lwd_avg": "lwd",
     "temperature": "temp", "humidity": "rh",
+    "pressure": "pressure",
 }
-_LR0300_SHORT_ALIASES = {
+_LR0300_VAR_MAP = {
     "swu_avg": "swu", "lwu_avg": "lwu", "net_avg": "net",
+}
+_LR4000_VAR_MAP = {
+    "domeT1_down": "dt1d", "domeT2_down": "dt2d",
+    "domeT3_down": "dt3d", "bodyT_down": "btd",
+    "domeT1_up": "dt1u", "domeT2_up": "dt2u",
+    "domeT3_up": "dt3u", "bodyT_up": "btu",
 }
 
 
@@ -65,10 +68,10 @@ class BSRNDataset(BaseModel):
         测量月份（1--12）。
     lr0100 : LR0100
         Validated LR0100 logical record (minute radiation and
-        met data). This is the source of truth; ``data`` is
+        met data). This is the source of truth; ``data()`` is
         derived from it.
         已校验的 LR0100 逻辑记录（分钟辐射与气象数据）。
-        为数据源；``data`` 由其派生。
+        为数据源；``data()`` 由其派生。
     lr0300 : LR0300 or None
         Validated LR0300 logical record (reflected / upward
         SW, LW, net radiation). Default ``None``.
@@ -90,11 +93,10 @@ class BSRNDataset(BaseModel):
         Elevation (m above sea level); resolved from
         ``BSRN_STATIONS``.
         海拔（米）；从 ``BSRN_STATIONS`` 解析。
-    resolution : str or None
-        Temporal resolution as a pandas frequency string
-        (e.g. ``'1min'``, ``'3min'``, ``'5min'``). Defaults
-        to ``'1min'``.
-        时间分辨率（pandas 频率字符串）；默认 ``'1min'``。
+    resolution : int or None
+        Temporal resolution in minutes (e.g. ``1``, ``2``,
+        ``3``, ``5``). Defaults to ``1``.
+        时间分辨率（分钟）；默认 ``1``。
 
     Raises
     ------
@@ -131,7 +133,10 @@ class BSRNDataset(BaseModel):
     lat: float = None
     lon: float = None
     elev: float = None
-    resolution: str = None
+    resolution: int = None
+
+    # Internal cached DataFrame; excluded from serialisation.
+    _df_cache: Optional[pd.DataFrame] = PrivateAttr(default=None)
 
     # ------------------------------------------------------------------ #
     #  Validators                                                          #
@@ -215,61 +220,63 @@ class BSRNDataset(BaseModel):
         return cls(**read_bsrn_archive(path))
 
     # ------------------------------------------------------------------ #
-    #  Properties                                                          #
+    #  data()                                                              #
     # ------------------------------------------------------------------ #
 
-    @property
-    def data(self):
+    def data(self, include=None):
         """
-        Minute-resolution DataFrame derived from ``lr0100``
-        (and ``lr0300`` / ``lr4000`` when present).
+        Minute-resolution DataFrame derived from ``lr0100``.
 
-        由 ``lr0100``（及 ``lr0300`` / ``lr4000``）派生的
-        分钟分辨率 DataFrame。
+        由 ``lr0100`` 派生的分钟分辨率 DataFrame。
+
+        The base frame contains only the LR0100 **mean / scalar**
+        columns under short names (``ghi``, ``bni``, ``dhi``,
+        ``lwd``, ``temp``, ``rh``, ``pressure``). It is built once
+        and cached so that pipeline methods (``add_solpos``, etc.)
+        can enrich it in-place.
+
+        基础帧仅包含 LR0100 均值/标量列的短名。首次构建后缓存，
+        管线方法可原地扩展。
+
+        Parameters
+        ----------
+        include : sequence of str, optional
+            Extra logical records to merge: ``"lr0300"`` and/or
+            ``"lr4000"`` (case-insensitive).  When given, the
+            corresponding mean/value columns are appended.
+            要合并的额外逻辑记录（不区分大小写）。
 
         Returns
         -------
         pandas.DataFrame
-            UTC ``DatetimeIndex``; columns are the non-None
-            LR0100 / LR0300 / LR4000 minute fields.
-            UTC ``DatetimeIndex``；列为非 None 的 LR0100 /
-            LR0300 / LR4000 分钟字段。
+            UTC ``DatetimeIndex``; default columns are LR0100
+            means only.
         """
-        y, m = map(int, self.lr0100.yearMonth.split("-"))
-        first_vec = None
-        for col in _LR0100_MINUTE_COLS:
-            first_vec = getattr(self.lr0100, col, None)
-            if first_vec is not None:
-                break
-        n = len(first_vec) if first_vec is not None else (
-            calendar.monthrange(y, m)[1] * 1440
-        )
-        idx = pd.date_range(
-            f"{y}-{m:02d}-01", periods=n,
-            freq=self.resolution, tz="UTC",
-        )
-        cols = {}
-        for col in _LR0100_MINUTE_COLS:
-            vec = getattr(self.lr0100, col, None)
-            if vec is not None:
-                arr = np.asarray(vec)
-                cols[col] = arr
-                if col in _LR0100_SHORT_ALIASES:
-                    cols[_LR0100_SHORT_ALIASES[col]] = arr
-        if self.lr0300 is not None:
-            for col in _LR0300_MINUTE_COLS:
-                vec = getattr(self.lr0300, col, None)
+        if self._df_cache is None:
+            self._df_cache = self._build_base_frame()
+
+        if not include:
+            return self._df_cache
+
+        want = {s.lower() for s in include}
+        extra = {}
+
+        if "lr0300" in want and self.lr0300 is not None:
+            for lr_col, short in _LR0300_VAR_MAP.items():
+                vec = getattr(self.lr0300, lr_col, None)
                 if vec is not None:
-                    arr = np.asarray(vec)
-                    cols[col] = arr
-                    if col in _LR0300_SHORT_ALIASES:
-                        cols[_LR0300_SHORT_ALIASES[col]] = arr
-        if self.lr4000 is not None:
-            for col in _LR4000_MINUTE_COLS:
-                vec = getattr(self.lr4000, col, None)
+                    extra[short] = np.asarray(vec)
+
+        if "lr4000" in want and self.lr4000 is not None:
+            for lr_col, short in _LR4000_VAR_MAP.items():
+                vec = getattr(self.lr4000, lr_col, None)
                 if vec is not None:
-                    cols[col] = np.asarray(vec)
-        return pd.DataFrame(cols, index=idx)
+                    extra[short] = np.asarray(vec)
+
+        if not extra:
+            return self._df_cache
+
+        return self._df_cache.assign(**extra)
 
     # ------------------------------------------------------------------ #
     #  Pipeline methods (delegate to standalone functions)                  #
@@ -279,9 +286,9 @@ class BSRNDataset(BaseModel):
     def add_solpos(self):
         """
         Add solar position and extraterrestrial irradiance columns
-        to ``data``.
+        to the cached ``data()`` frame.
 
-        向 ``data`` 添加太阳位置和地外辐射列。
+        向缓存的 ``data()`` 帧添加太阳位置和地外辐射列。
 
         Delegates to
         :func:`~bsrn.physics.geometry.add_solpos_columns` using
@@ -290,20 +297,22 @@ class BSRNDataset(BaseModel):
         Returns
         -------
         pandas.DataFrame
-            ``data`` with added columns: ``zenith``,
+            ``data()`` with added columns: ``zenith``,
             ``apparent_zenith``, ``azimuth``, ``bni_extra``,
             ``ghi_extra``.
         """
         from .physics.geometry import add_solpos_columns
         return add_solpos_columns(
-            self.data, lat=self.lat, lon=self.lon, elev=self.elev,
+            self.data(), station_code=self.station_code,
+            lat=self.lat, lon=self.lon, elev=self.elev,
         )
 
     def add_clearsky(self, model="ineichen", mcclear_email=None):
         """
-        Add clear-sky irradiance columns to ``data``.
+        Add clear-sky irradiance columns to the cached ``data()``
+        frame.
 
-        向 ``data`` 添加晴空辐射列。
+        向缓存的 ``data()`` 帧添加晴空辐射列。
 
         Delegates to
         :func:`~bsrn.modeling.clear_sky.add_clearsky_columns`.
@@ -322,21 +331,23 @@ class BSRNDataset(BaseModel):
         Returns
         -------
         pandas.DataFrame
-            ``data`` with added clear-sky columns
+            ``data()`` with added clear-sky columns
             (``ghi_clear``, ``bni_clear``, ``dhi_clear``, …).
         """
         from .modeling.clear_sky import add_clearsky_columns
         return add_clearsky_columns(
-            self.data, lat=self.lat, lon=self.lon, elev=self.elev,
+            self.data(), station_code=self.station_code,
+            lat=self.lat, lon=self.lon, elev=self.elev,
             model=model, mcclear_email=mcclear_email,
         )
 
     def run_qc(self, tests=('ppl', 'erl', 'closure',
                             'diff_ratio', 'k_index', 'tracker')):
         """
-        Run QC tests and add flag columns to ``data``.
+        Run QC tests and add flag columns to the cached ``data()``
+        frame.
 
-        运行 QC 测试并向 ``data`` 添加标志列。
+        运行 QC 测试并向缓存的 ``data()`` 帧添加标志列。
 
         Delegates to :func:`~bsrn.qc.wrapper.run_qc`.
 
@@ -349,17 +360,38 @@ class BSRNDataset(BaseModel):
         Returns
         -------
         pandas.DataFrame
-            ``data`` with added ``flag_*`` columns.
+            ``data()`` with added ``flag_*`` columns.
         """
         from .qc.wrapper import run_qc
         return run_qc(
-            self.data, lat=self.lat, lon=self.lon, elev=self.elev,
+            self.data(), station_code=self.station_code,
+            lat=self.lat, lon=self.lon, elev=self.elev,
             tests=tests,
         )
 
     # ------------------------------------------------------------------ #
     #  Private helpers                                                      #
     # ------------------------------------------------------------------ #
+
+    def _build_base_frame(self):
+        """Build the LR0100-means-only DataFrame (called once)."""
+        y, m = map(int, self.lr0100.yearMonth.split("-"))
+        n = None
+        cols = {}
+        for lr_col, short in _LR0100_VAR_MAP.items():
+            vec = getattr(self.lr0100, lr_col, None)
+            if vec is not None:
+                arr = np.asarray(vec)
+                cols[short] = arr
+                if n is None:
+                    n = len(arr)
+        if n is None:
+            n = calendar.monthrange(y, m)[1] * 1440
+        idx = pd.date_range(
+            f"{y}-{m:02d}-01", periods=n,
+            freq=f"{self.resolution} min", tz="UTC",
+        )
+        return pd.DataFrame(cols, index=idx)
 
     def _infer_resolution(self):
         """
@@ -371,14 +403,9 @@ class BSRNDataset(BaseModel):
         y, m = map(int, self.lr0100.yearMonth.split("-"))
         ndays = calendar.monthrange(y, m)[1]
         expected_1min = ndays * 1440
-        for col in _LR0100_MINUTE_COLS:
-            vec = getattr(self.lr0100, col, None)
+        for lr_col in _LR0100_VAR_MAP:
+            vec = getattr(self.lr0100, lr_col, None)
             if vec is not None:
                 n = len(vec)
-                if n == expected_1min:
-                    return "1min"
-                minutes_per_sample = expected_1min / n
-                if minutes_per_sample == int(minutes_per_sample):
-                    return f"{int(minutes_per_sample)}min"
-                return f"{minutes_per_sample:.2f}min"
-        return "1min"
+                return expected_1min // n
+        return 1

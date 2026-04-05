@@ -87,7 +87,7 @@ download_bsrn_stn("QIQ", "data/QIQ", username="your_user", password="your_pass")
 
 # 3. Read via BSRNDataset and get the DataFrame
 ds = bsrn.BSRNDataset.from_file("data/QIQ/qiq0125.dat.gz")
-df = ds.data
+df = ds.data()
 
 # 4. Add solar position (recommended before time-averaging or clear-sky)
 df = add_solpos_columns(df, "QIQ")

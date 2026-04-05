@@ -22,7 +22,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.pyplot as plt
 
 from bsrn.constants import BSRN_STATIONS, WONG_PALETTE
-from bsrn.io.reader import read_station_to_archive
+from bsrn.dataset import BSRNDataset
 from bsrn.modeling.clear_sky import add_clearsky_columns
 from bsrn.physics.geometry import get_solar_position, get_ghi_extra
 from bsrn.utils import reno_csd, ineichen_csd, lefevre_csd, brightsun_csd
@@ -69,9 +69,7 @@ def plot_csd_booklet(file_path, output_file, station_code, df=None, title=None):
     # Load data and ensure December only.
     # 加载数据并确保仅包含十二月。
     if df is None:
-        df = read_station_to_archive(file_path)
-        if df is None:
-            raise ValueError(f"Failed to read BSRN file: {file_path}")
+        df = BSRNDataset.from_file(file_path).data()
 
     df = df.sort_index()
     unique_months = df.index.to_period("M").unique()

@@ -21,7 +21,7 @@ from plotnine import (
 )
 
 from bsrn.constants import WONG_PALETTE
-from bsrn.io.reader import read_station_to_archive
+from bsrn.dataset import BSRNDataset
 from bsrn.modeling.clear_sky import add_clearsky_columns
 
 
@@ -81,9 +81,7 @@ def plot_clearsky_models_booklet(
        benchmark dataset. Solar Energy, 82(3), 272-285.
     """
     if df is None:
-        df = read_station_to_archive(file_path)
-        if df is None:
-            raise ValueError(f"Failed to read BSRN file: {file_path}")
+        df = BSRNDataset.from_file(file_path).data()
 
     df = df.sort_index()
     unique_months = df.index.to_period("M").unique()

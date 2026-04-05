@@ -27,7 +27,7 @@ from bsrn.physics.geometry import get_solar_position, get_bni_extra
 from bsrn.qc.ppl import ghi_ppl_test, bni_ppl_test, dhi_ppl_test
 
 
-from bsrn.io.reader import read_station_to_archive
+from bsrn.dataset import BSRNDataset
 from bsrn.modeling.clear_sky import add_clearsky_columns
 from bsrn.qc.wrapper import run_qc
 
@@ -153,9 +153,7 @@ def _load_month_archive_for_timeseries(file_path, station_code, apply_qc):
     Load one month from archive, add geometry, optional clearsky and PPL masking.
     加载单月存档，加入几何、可选晴空与 PPL 掩膜。
     """
-    plot_df = read_station_to_archive(file_path)
-    if plot_df is None:
-        raise ValueError(f"Failed to read BSRN file: {file_path}")
+    plot_df = BSRNDataset.from_file(file_path).data()
 
     unique_months = np.unique(plot_df.index.to_period("M"))
     if len(unique_months) != 1:
@@ -201,20 +199,26 @@ def _ggplot_bsrn_timeseries_one_day(
     width_inch = 160 / 25.4
     height_inch = width_inch / 1.8
 
+    day_df = day_df.copy()
+    day_work = day_df.reset_index()
+    _tcol = day_work.columns[0]
+    if _tcol != "time":
+        day_work = day_work.rename(columns={_tcol: "time"})
+
     main_vars = ["ghi", "bni", "dhi"]
-    if "lwd" in day_df.columns:
+    if "lwd" in day_work.columns:
         main_vars.append("lwd")
     clear_vars = ["ghi_clear", "bni_clear", "dhi_clear"]
-    if "lwd_clear" in day_df.columns:
+    if "lwd_clear" in day_work.columns:
         clear_vars.append("lwd_clear")
 
-    day_main_measured = day_df.reset_index().melt(
+    day_main_measured = day_work.melt(
         id_vars=["time"],
         value_vars=main_vars,
         var_name="parameter",
         value_name="measured",
     )
-    day_main_clear = day_df.reset_index().melt(
+    day_main_clear = day_work.melt(
         id_vars=["time"],
         value_vars=clear_vars,
         var_name="parameter",
@@ -232,7 +236,11 @@ def _ggplot_bsrn_timeseries_one_day(
     day_df_diag.loc[day_zenith >= 90, "gh_ratio"] = np.nan
 
     diag_vars = ["gh_diff", "gh_ratio", "temp", "rh", "pressure"]
-    day_diag = day_df_diag.reset_index().melt(
+    diag_work = day_df_diag.reset_index()
+    _t2 = diag_work.columns[0]
+    if _t2 != "time":
+        diag_work = diag_work.rename(columns={_t2: "time"})
+    day_diag = diag_work.melt(
         id_vars=["time"],
         value_vars=diag_vars,
         var_name="parameter",

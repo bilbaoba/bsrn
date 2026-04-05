@@ -277,12 +277,12 @@ def add_solpos_columns(df, station_code=None, lat=None, lon=None, elev=None):
         )
     
     solpos = get_solar_position(df.index, lat, lon, elev)
-    df["zenith"] = solpos["zenith"]
-    df["apparent_zenith"] = solpos["apparent_zenith"]
-    df["azimuth"] = solpos["azimuth"]
+    df["zenith"] = solpos["zenith"].round(3)
+    df["apparent_zenith"] = solpos["apparent_zenith"].round(3)
+    df["azimuth"] = solpos["azimuth"].round(3)
     
-    df["bni_extra"] = get_bni_extra(df.index)
-    df["ghi_extra"] = get_ghi_extra(df.index, df["zenith"])
+    df["bni_extra"] = get_bni_extra(df.index).round(3)
+    df["ghi_extra"] = get_ghi_extra(df.index, df["zenith"]).round(3)
     return df
 
 
