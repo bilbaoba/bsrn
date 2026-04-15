@@ -171,7 +171,7 @@ class BSRNDataset(BaseModel):
     # ------------------------------------------------------------------ #
 
     @classmethod
-    def from_file(cls, path):
+    def from_file(cls, path, include_lrs=None, strict=False):
         """
         Parse a BSRN ``.dat.gz`` station-to-archive file and return
         a fully validated ``BSRNDataset``.
@@ -181,6 +181,14 @@ class BSRNDataset(BaseModel):
         path : str or Path
             Path to the ``.dat.gz`` file (filename format
             ``XXXMMYY.dat.gz``).
+        include_lrs : sequence of str or 'all', optional
+            Logical records to parse. Currently supports
+            ``'0100'``, ``'0300'``, ``'4000'``. Default ``None``
+            parses all three.
+        strict : bool, optional
+            Passed to :func:`~bsrn.io.reader.read_bsrn_archive`.
+            If ``True``, optional LR parse failures raise; otherwise
+            failing optional LRs are returned as ``None``.
 
         Returns
         -------
@@ -194,7 +202,11 @@ class BSRNDataset(BaseModel):
             If the filename cannot be parsed or no LR0100 block
             is found.
         """
-        return cls(**read_bsrn_archive(path))
+        return cls(
+            **read_bsrn_archive(
+                path, include_lrs=include_lrs, strict=strict,
+            )
+        )
 
     # ------------------------------------------------------------------ #
     #  data()                                                              #

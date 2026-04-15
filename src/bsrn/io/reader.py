@@ -36,12 +36,14 @@ _LR4000_MINUTE_COLS = (
     "bodyT_up", "longwave_up",
 )
 
+_SUPPORTED_LRS = frozenset(("0100", "0300", "4000"))
+
 
 # ------------------------------------------------------------------ #
 #  Public API                                                          #
 # ------------------------------------------------------------------ #
 
-def read_bsrn_archive(path):
+def read_bsrn_archive(path, include_lrs=None, strict=False):
     """
     Parse a BSRN ``.dat.gz`` station-to-archive file.
 
@@ -50,6 +52,14 @@ def read_bsrn_archive(path):
     path : str or Path
         Path to the ``.dat.gz`` file (filename format
         ``XXXMMYY.dat.gz``).
+    include_lrs : sequence of str or 'all', optional
+        Logical records to parse. Currently supported:
+        ``'0100'``, ``'0300'``, ``'4000'``. Default ``None``
+        parses all three.
+    strict : bool, optional
+        If ``True``, raise when optional LR parsing fails.
+        If ``False`` (default), optional LRs that fail parsing are
+        returned as ``None``.
 
     Returns
     -------
@@ -64,9 +74,24 @@ def read_bsrn_archive(path):
     FileNotFoundError
         If *path* does not exist.
     ValueError
-        If the filename cannot be parsed or no LR0100 block
-        is found.
+        If the filename cannot be parsed, requested LR codes are
+        unsupported, or no LR0100 block is found.
     """
+    if include_lrs is None or include_lrs == "all":
+        wanted_lrs = set(_SUPPORTED_LRS)
+    else:
+        if isinstance(include_lrs, str):
+            include_lrs = [include_lrs]
+        wanted_lrs = {str(lr).strip() for lr in include_lrs}
+        invalid = sorted(wanted_lrs - _SUPPORTED_LRS)
+        if invalid:
+            supported = ", ".join(sorted(_SUPPORTED_LRS))
+            got = ", ".join(invalid)
+            raise ValueError(
+                f"Unsupported include_lrs: {got}. "
+                f"Supported LR codes are: {supported}."
+            )
+
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(path)
@@ -101,19 +126,29 @@ def read_bsrn_archive(path):
                 return lines[start:end]
         return None
 
-    # -- LR0100 (required, 2-line pairs) --
+    # -- LR0100 (required by BSRNDataset) --
+    if "0100" not in wanted_lrs:
+        raise ValueError("LR0100 is required in include_lrs.")
     raw0100 = _block_lines("0100")
     if raw0100 is None:
         raise ValueError(f"LR0100 record not found in {fname}")
     lr0100 = _parse_lr0100(raw0100, year_month)
 
     # -- LR0300 (optional, 1-line per minute) --
-    raw0300 = _block_lines("0300")
-    lr0300 = _parse_lr0300(raw0300, year_month) if raw0300 else None
+    lr0300 = None
+    if "0300" in wanted_lrs:
+        raw0300 = _block_lines("0300")
+        lr0300 = _parse_optional_lr(
+            raw0300, year_month, _parse_lr0300, "0300", strict,
+        )
 
     # -- LR4000 (optional, 1-line per minute) --
-    raw4000 = _block_lines("4000")
-    lr4000 = _parse_lr4000(raw4000, year_month) if raw4000 else None
+    lr4000 = None
+    if "4000" in wanted_lrs:
+        raw4000 = _block_lines("4000")
+        lr4000 = _parse_optional_lr(
+            raw4000, year_month, _parse_lr4000, "4000", strict,
+        )
 
     return dict(
         station_code=station_code,
@@ -128,6 +163,20 @@ def read_bsrn_archive(path):
 # ------------------------------------------------------------------ #
 #  Private line-parsers                                                #
 # ------------------------------------------------------------------ #
+
+
+def _parse_optional_lr(raw_lines, year_month, parser, lr_code, strict):
+    """Parse optional LR block; suppress parse errors unless strict=True."""
+    if not raw_lines:
+        return None
+    try:
+        return parser(raw_lines, year_month)
+    except Exception as exc:
+        if strict:
+            raise ValueError(
+                f"Failed to parse LR{lr_code} with strict=True."
+            ) from exc
+        return None
 
 def _parse_lr0100(raw_lines, year_month):
     """
