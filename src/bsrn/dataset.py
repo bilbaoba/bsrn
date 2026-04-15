@@ -183,7 +183,7 @@ class BSRNDataset(BaseModel):
             ``XXXMMYY.dat.gz``).
         include_lrs : sequence of str or 'all', optional
             Logical records to parse. Currently supports
-            ``'0100'``, ``'0300'``, ``'4000'``. Default ``None``
+            ``'lr0100'``, ``'lr0300'``, ``'lr4000'``. Default ``None``
             parses all three.
         strict : bool, optional
             Passed to :func:`~bsrn.io.reader.read_bsrn_archive`.

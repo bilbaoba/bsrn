@@ -36,7 +36,7 @@ _LR4000_MINUTE_COLS = (
     "bodyT_up", "longwave_up",
 )
 
-_SUPPORTED_LRS = frozenset(("0100", "0300", "4000"))
+_SUPPORTED_LRS = frozenset(("lr0100", "lr0300", "lr4000"))
 
 
 # ------------------------------------------------------------------ #
@@ -54,7 +54,7 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
         ``XXXMMYY.dat.gz``).
     include_lrs : sequence of str or 'all', optional
         Logical records to parse. Currently supported:
-        ``'0100'``, ``'0300'``, ``'4000'``. Default ``None``
+        ``'lr0100'``, ``'lr0300'``, ``'lr4000'``. Default ``None``
         parses all three.
     strict : bool, optional
         If ``True``, raise when optional LR parsing fails.
@@ -75,14 +75,14 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
         If *path* does not exist.
     ValueError
         If the filename cannot be parsed, requested LR codes are
-        unsupported, or no LR0100 block is found.
+        unsupported, or no lr0100 block is found.
     """
     if include_lrs is None or include_lrs == "all":
         wanted_lrs = set(_SUPPORTED_LRS)
     else:
         if isinstance(include_lrs, str):
             include_lrs = [include_lrs]
-        wanted_lrs = {str(lr).strip() for lr in include_lrs}
+        wanted_lrs = {str(lr).strip().lower() for lr in include_lrs}
         invalid = sorted(wanted_lrs - _SUPPORTED_LRS)
         if invalid:
             supported = ", ".join(sorted(_SUPPORTED_LRS))
@@ -106,48 +106,31 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
     with gzip.open(path, "rt", encoding="ascii") as f:
         lines = f.readlines()
 
-    # Locate all record markers (*U… / *C…).
-    markers = [
-        (i, lines[i].strip())
-        for i in range(len(lines))
-        if lines[i].startswith("*")
-    ]
-
-    def _block_lines(suffix):
-        """Return data lines for the first marker ending with *suffix*."""
-        for idx, (pos, marker) in enumerate(markers):
-            if marker.endswith(suffix):
-                start = pos + 1
-                end = (
-                    markers[idx + 1][0]
-                    if idx + 1 < len(markers)
-                    else len(lines)
-                )
-                return lines[start:end]
-        return None
+    # Collect LR blocks once, keyed by LR code.
+    lr_blocks = _collect_lr_blocks(lines)
 
     # -- LR0100 (required by BSRNDataset) --
-    if "0100" not in wanted_lrs:
-        raise ValueError("LR0100 is required in include_lrs.")
-    raw0100 = _block_lines("0100")
+    if "lr0100" not in wanted_lrs:
+        raise ValueError("lr0100 is required in include_lrs.")
+    raw0100 = lr_blocks.get("lr0100")
     if raw0100 is None:
         raise ValueError(f"LR0100 record not found in {fname}")
     lr0100 = _parse_lr0100(raw0100, year_month)
 
     # -- LR0300 (optional, 1-line per minute) --
     lr0300 = None
-    if "0300" in wanted_lrs:
-        raw0300 = _block_lines("0300")
+    if "lr0300" in wanted_lrs:
+        raw0300 = lr_blocks.get("lr0300")
         lr0300 = _parse_optional_lr(
-            raw0300, year_month, _parse_lr0300, "0300", strict,
+            raw0300, year_month, _parse_lr0300, "lr0300", strict,
         )
 
     # -- LR4000 (optional, 1-line per minute) --
     lr4000 = None
-    if "4000" in wanted_lrs:
-        raw4000 = _block_lines("4000")
+    if "lr4000" in wanted_lrs:
+        raw4000 = lr_blocks.get("lr4000")
         lr4000 = _parse_optional_lr(
-            raw4000, year_month, _parse_lr4000, "4000", strict,
+            raw4000, year_month, _parse_lr4000, "lr4000", strict,
         )
 
     return dict(
@@ -174,9 +157,32 @@ def _parse_optional_lr(raw_lines, year_month, parser, lr_code, strict):
     except Exception as exc:
         if strict:
             raise ValueError(
-                f"Failed to parse LR{lr_code} with strict=True."
+                f"Failed to parse {lr_code} with strict=True."
             ) from exc
         return None
+
+
+def _collect_lr_blocks(lines):
+    """Collect first LR block lines for each marker key (e.g., lr0100)."""
+    markers = [
+        (i, lines[i].strip())
+        for i in range(len(lines))
+        if lines[i].startswith("*")
+    ]
+
+    lr_blocks = {}
+    for idx, (pos, marker) in enumerate(markers):
+        lr_key = f"lr{marker[-4:]}"
+        if lr_key in lr_blocks:
+            continue
+        start = pos + 1
+        end = (
+            markers[idx + 1][0]
+            if idx + 1 < len(markers)
+            else len(lines)
+        )
+        lr_blocks[lr_key] = lines[start:end]
+    return lr_blocks
 
 def _parse_lr0100(raw_lines, year_month):
     """
