@@ -48,6 +48,38 @@ class LR0001(ArchiveRecordBase):
     year: lr_spec("LR0001", "year", int)
     version: lr_spec("LR0001", "version", int)
 
+    @classmethod
+    def from_file(cls, path, strict=False):
+        """
+        Load LR0001 from one BSRN ``.dat.gz`` archive file.
+
+        Parameters
+        ----------
+        path : str or Path
+            Path to one station-to-archive ``.dat.gz`` file.
+        strict : bool, optional
+            Passed to :func:`~bsrn.io.reader.read_bsrn_archive`.
+
+        Returns
+        -------
+        LR0001
+            Parsed and validated LR0001 record.
+
+        Raises
+        ------
+        ValueError
+            If the file does not contain a valid LR0001 block.
+        """
+        from bsrn.io.reader import read_bsrn_archive
+
+        out = read_bsrn_archive(
+            path, include_lrs=["lr0100", "lr0001"], strict=strict,
+        )
+        rec = out.get("metadata_lrs", {}).get("lr0001")
+        if rec is None:
+            raise ValueError("Failed to load lr0001 from file.")
+        return rec
+
 
 class LR0002(ArchiveRecordBase):
     scientistChange: lr_spec("LR0002", "scientistChange", bool, default=False)

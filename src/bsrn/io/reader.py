@@ -4,8 +4,9 @@ BSRN ``.dat.gz`` archive reader — returns validated Pydantic LR models.
 The single public entry point is :func:`read_bsrn_archive`, which opens
 the file once, locates ``*U`` / ``*C`` record markers, and builds
 :class:`~bsrn.archive.records_models.LR0100`,
-:class:`~bsrn.archive.records_models.LR0300`, and
-:class:`~bsrn.archive.records_models.LR4000` instances.
+:class:`~bsrn.archive.records_models.LR0300`,
+:class:`~bsrn.archive.records_models.LR4000`, and optionally
+:class:`~bsrn.archive.records_models.LR0001` (stored under ``metadata_lrs``).
 """
 
 import gzip
@@ -13,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from bsrn.archive.records_models import LR0100, LR0300, LR4000
+from bsrn.archive.records_models import LR0001, LR0100, LR0300, LR4000
 
 _LR0100_MINUTE_COLS = (
     "ghi_avg", "ghi_std", "ghi_min", "ghi_max",
@@ -36,7 +37,7 @@ _LR4000_MINUTE_COLS = (
     "bodyT_up", "longwave_up",
 )
 
-_SUPPORTED_LRS = frozenset(("lr0100", "lr0300", "lr4000"))
+_SUPPORTED_LRS = frozenset(("lr0100", "lr0300", "lr4000", "lr0001"))
 
 
 # ------------------------------------------------------------------ #
@@ -53,9 +54,10 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
         Path to the ``.dat.gz`` file (filename format
         ``XXXMMYY.dat.gz``).
     include_lrs : sequence of str or 'all', optional
-        Logical records to parse. Currently supported:
-        ``'lr0100'``, ``'lr0300'``, ``'lr4000'``. Default ``None``
-        parses all three.
+        Logical records to parse. Supported codes:
+        ``'lr0100'`` (required), ``'lr0300'``, ``'lr4000'``,
+        ``'lr0001'``. Default ``None`` and ``'all'`` parse all of
+        the above.
     strict : bool, optional
         Controls optional-LR parse failures. If ``True``, malformed
         optional LR blocks raise ``ValueError``. If ``False`` (default),
@@ -67,7 +69,9 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
     dict
         Keys: ``station_code``, ``year``, ``month``, ``lr0100``,
         ``lr0300`` (or ``None``), ``lr4000`` (or ``None``),
-        ``metadata_lrs`` (currently empty dict placeholder).
+        ``metadata_lrs`` (when ``'lr0001'`` is requested and parsed,
+        contains ``'lr0001'`` → :class:`~bsrn.archive.records_models.LR0001`;
+        otherwise an empty dict).
         Suitable for unpacking into
         :class:`~bsrn.dataset.BSRNDataset`.
 
@@ -136,6 +140,15 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
             raw4000, year_month, _parse_lr4000, "lr4000", strict,
         )
 
+    metadata_lrs = {}
+    if "lr0001" in wanted_lrs:
+        raw0001 = lr_blocks.get("lr0001")
+        lr0001 = _parse_optional_metadata_lr(
+            raw0001, _parse_lr0001, "lr0001", strict,
+        )
+        if lr0001 is not None:
+            metadata_lrs["lr0001"] = lr0001
+
     return dict(
         station_code=station_code,
         year=year,
@@ -143,7 +156,7 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
         lr0100=lr0100,
         lr0300=lr0300,
         lr4000=lr4000,
-        metadata_lrs={},
+        metadata_lrs=metadata_lrs,
     )
 
 
@@ -153,11 +166,35 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
 
 
 def _parse_optional_lr(raw_lines, year_month, parser, lr_code, strict):
-    """Parse optional LR block; suppress parse errors unless strict=True."""
+    """
+    Parse an optional minute-series LR block.
+
+    ``parser`` is ``(raw_lines, year_month) -> model``; *year_month* comes from
+    the archive filename and is required for vector length checks on LR0300 /
+    LR4000.
+    """
     if not raw_lines:
         return None
     try:
         return parser(raw_lines, year_month)
+    except Exception as exc:
+        if strict:
+            raise ValueError(
+                f"Failed to parse {lr_code} with strict=True."
+            ) from exc
+        return None
+
+
+def _parse_optional_metadata_lr(raw_lines, parser, lr_code, strict):
+    """
+    Parse an optional header-style LR block (no filename ``year_month``).
+
+    ``parser`` is ``raw_lines -> model`` (for example :func:`_parse_lr0001`).
+    """
+    if not raw_lines:
+        return None
+    try:
+        return parser(raw_lines)
     except Exception as exc:
         if strict:
             raise ValueError(
@@ -187,6 +224,37 @@ def _collect_lr_blocks(lines):
         )
         lr_blocks[lr_key] = lines[start:end]
     return lr_blocks
+
+def _parse_lr0001(raw_lines):
+    """
+    Build ``LR0001`` from raw archive text after the ``*U0001`` / ``*C0001``
+    marker.
+
+    The first non-blank line holds ``stationNumber``, ``month``, ``year``,
+    ``version``; following lines list radiation-quantity slot IDs and are
+    ignored for the Pydantic model.
+    """
+    if not raw_lines:
+        return None
+    for line in raw_lines:
+        parts = line.strip().split()
+        if not parts:
+            continue
+        if len(parts) < 4:
+            raise ValueError(
+                "LR0001 header line must contain at least four integers."
+            )
+        try:
+            return LR0001(
+                stationNumber=int(parts[0]),
+                month=int(parts[1]),
+                year=int(parts[2]),
+                version=int(parts[3]),
+            )
+        except Exception as exc:
+            raise ValueError("Invalid LR0001 header fields.") from exc
+    return None
+
 
 def _parse_lr0100(raw_lines, year_month):
     """

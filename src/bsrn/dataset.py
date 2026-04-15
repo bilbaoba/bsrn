@@ -186,9 +186,9 @@ class BSRNDataset(BaseModel):
             Path to the ``.dat.gz`` file (filename format
             ``XXXMMYY.dat.gz``).
         include_lrs : sequence of str or 'all', optional
-            Logical records to parse. Currently supports
-            ``'lr0100'``, ``'lr0300'``, ``'lr4000'``. Default ``None``
-            parses all three.
+            Logical records to parse. Supports ``'lr0100'`` (required),
+            ``'lr0300'``, ``'lr4000'``, and ``'lr0001'``. Default ``None``
+            parses all supported records.
         strict : bool, optional
             Passed to :func:`~bsrn.io.reader.read_bsrn_archive`.
             If ``True``, malformed optional LR blocks raise.

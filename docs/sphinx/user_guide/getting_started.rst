@@ -25,7 +25,9 @@ Logical Record Selection
 ------------------------
 
 You can select which logical records are parsed using ``include_lrs``.
-Current selectors are ``"lr0100"``, ``"lr0300"``, and ``"lr4000"``.
+Supported selectors are ``"lr0100"`` (required), ``"lr0300"``,
+``"lr4000"``, and ``"lr0001"``. Parsed LR0001 is stored on the dataset
+under ``metadata_lrs["lr0001"]`` and is returned by ``ds.get_lr("lr0001")``.
 
 .. code-block:: python
 
@@ -45,14 +47,16 @@ When to use each LR access pattern:
 
 .. code-block:: python
 
-   from bsrn.archive import LR0100
+   from bsrn.archive import LR0001, LR0100
 
-   # Use LR0100.from_file(...) when you only need one LR object directly.
+   # Use LR0100.from_file(...) / LR0001.from_file(...) when you only need one LR.
    lr0100_direct = LR0100.from_file("data/QIQ/qiq0125.dat.gz")
+   lr0001_direct = LR0001.from_file("data/QIQ/qiq0125.dat.gz")
 
    # Use ds.get_lr(...) when you already work with a dataset pipeline object.
    ds = bsrn.BSRNDataset.from_file("data/QIQ/qiq0125.dat.gz")
    lr0100_from_ds = ds.get_lr("lr0100")
+   lr0001_from_ds = ds.get_lr("lr0001")
 
 Both patterns are valid. Pick one based on workflow context; there is no
 need to use both in the same script unless you explicitly want both views.
