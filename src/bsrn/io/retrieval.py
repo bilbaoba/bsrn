@@ -7,15 +7,57 @@ Handles FTP connections and automated downloads.
 import os
 import re
 import time
-import pandas as pd
 from ftplib import FTP
 from bsrn.constants import BSRN_FTP_HOST
-
 
 BSRN_FILENAME_PATTERN = re.compile(
     r"([a-zA-Z0-9]{3})(\d{2})(\d{2})(?:[._]([a-z0-9_-]+))?(?:\.dat\.gz|\.\d{3}|\.parquet)",
     re.IGNORECASE,
 )
+
+
+def _safe_ftp_quit(ftp):
+    """Call ``quit`` on *ftp* if set; ignore errors (cleanup path)."""
+    if ftp is None:
+        return
+    try:
+        ftp.quit()
+    except Exception:
+        pass
+
+
+def _ftp_relogin(ftp, host, username, password):
+    """Reconnect an existing client after a transient failure."""
+    try:
+        ftp.connect(host)
+        ftp.login(user=username, passwd=password)
+        ftp.set_pasv(True)
+    except Exception:
+        pass
+
+
+def _connect_ftp(host, username, password):
+    """Return a logged-in passive-mode FTP client."""
+    ftp = FTP(host)
+    ftp.set_pasv(True)
+    ftp.login(user=username, passwd=password)
+    return ftp
+
+
+def _monthly_dat_gz_filename(station, year, month):
+    """Build ``stnMMYY.dat.gz`` (lowercase station, 2-digit month and year)."""
+    year_str = str(year)[-2:]
+    month_int = int(month)
+    return f"{station.lower()}{month_int:02d}{year_str}.dat.gz"
+
+
+def _filter_station_archive_files(files):
+    """Keep only station-to-archive style names from an FTP ``nlst`` result."""
+    return [
+        f for f in files
+        if f.lower().endswith(".dat.gz")
+        or (len(f) > 4 and f[-4:].startswith(".") and f[-3:].isdigit())
+    ]
 
 
 def get_bsrn_file_inventory(stations, username, password, host=BSRN_FTP_HOST):
@@ -51,7 +93,10 @@ def get_bsrn_file_inventory(stations, username, password, host=BSRN_FTP_HOST):
             ftp.login(user=username, passwd=password)
 
             for i, stn in enumerate(stations):
-                print(f"[{i+1}/{len(stations)}] Fetching inventory for station {stn.upper()}...")
+                print(
+                    f"[{i + 1}/{len(stations)}] Fetching inventory for station "
+                    f"{stn.upper()}...",
+                )
                 stn_lower = stn.lower()
                 success = False
 
@@ -62,24 +107,12 @@ def get_bsrn_file_inventory(stations, username, password, host=BSRN_FTP_HOST):
                         ftp.cwd(stn_lower)
 
                         files = ftp.nlst()
-                        # Filter to include only station-to-archive files and exclude directories
-                        inventory[stn.upper()] = [
-                            f for f in files 
-                            if f.lower().endswith(".dat.gz") or 
-                            (len(f) > 4 and f[-4:].startswith(".") and f[-3:].isdigit())
-                        ]
+                        inventory[stn.upper()] = _filter_station_archive_files(files)
                         success = True
                         break
                     except Exception as e:
                         if attempt == 0:
-                            # Re-establish connection on failure
-                            try:
-                                ftp.connect(host)
-                                ftp.login(user=username, passwd=password)
-                                ftp.set_pasv(True)
-                            except:
-                                # Connection failed
-                                pass
+                            _ftp_relogin(ftp, host, username, password)
                         else:
                             print(f"BSRN FTP: Failed to retrieve {stn} after retry: {e}")
 
@@ -87,7 +120,7 @@ def get_bsrn_file_inventory(stations, username, password, host=BSRN_FTP_HOST):
                     inventory[stn.upper()] = []
 
     except Exception as e:
-        print(f"BSRN FTP: Major Connection Error: {e}")
+        print(f"BSRN FTP: Major connection error: {e}")
     return inventory
 
 
@@ -118,10 +151,7 @@ def download_bsrn_single(station, year, month, local_dir, username,
     local_path : str or None
         The path to the downloaded file, or None if failed.
     """
-    # BSRN filenames use 2-digit months and 2-digit years, strictly lowercase
-    year_str = str(year)[-2:]
-    month_int = int(month)
-    filename = f"{station.lower()}{month_int:02d}{year_str}.dat.gz"
+    filename = _monthly_dat_gz_filename(station, year, month)
     return download_bsrn_files([filename], local_dir, username, password, host=host)[0]
 
 
@@ -180,9 +210,7 @@ def download_bsrn_mon(stations, year, month, local_dir,
     downloaded_paths : list
         List of paths to the downloaded files.
     """
-    year_str = str(year)[-2:]
-    month_int = int(month)
-    filenames = [f"{stn.lower()}{month_int:02d}{year_str}.dat.gz" for stn in stations]
+    filenames = [_monthly_dat_gz_filename(stn, year, month) for stn in stations]
     return download_bsrn_files(filenames, local_dir, username, password, host=host)
 
 
@@ -214,23 +242,9 @@ def download_bsrn_files(filenames, local_dir, username,
     os.makedirs(local_dir, exist_ok=True)
     downloaded_paths = []
 
-    def connect_ftp():
-        """
-        Open one FTP connection and log in.
-
-        Returns
-        -------
-        ftplib.FTP
-            Connected client.
-        """
-        ftp = FTP(host)
-        ftp.set_pasv(True)
-        ftp.login(user=username, passwd=password)
-        return ftp
-
     ftp = None
     try:
-        ftp = connect_ftp()
+        ftp = _connect_ftp(host, username, password)
         for filename in filenames:
             filename_lower = filename.lower()
             local_path = os.path.join(local_dir, filename_lower)
@@ -240,8 +254,8 @@ def download_bsrn_files(filenames, local_dir, username,
             for attempt in range(retries):
                 try:
                     if ftp is None:
-                        ftp = connect_ftp()
-                    
+                        ftp = _connect_ftp(host, username, password)
+
                     ftp.cwd("/")
                     ftp.cwd(station_code)
 
@@ -252,13 +266,8 @@ def download_bsrn_files(filenames, local_dir, username,
                     success = True
                     break
                 except Exception as e:
-                    print(f"BSRN FTP: Attempt {attempt+1} failed for {filename}: {e}")
-                    # Close and set ftp to None for reconnection on next attempt
-                    try:
-                        ftp.quit()
-                    except:
-                        # quit failed
-                        pass
+                    print(f"BSRN FTP: Attempt {attempt + 1} failed for {filename}: {e}")
+                    _safe_ftp_quit(ftp)
                     ftp = None
                     if attempt < retries - 1:
                         time.sleep(2 ** attempt)  # Exponential backoff
@@ -271,11 +280,7 @@ def download_bsrn_files(filenames, local_dir, username,
         while len(downloaded_paths) < len(filenames):
             downloaded_paths.append(None)
     finally:
-        if ftp:
-            try:
-                ftp.quit()
-            except:
-                pass
+        _safe_ftp_quit(ftp)
 
     return downloaded_paths
 
@@ -336,4 +341,4 @@ def months_from_ftp_filenames(filenames):
         _, y, m, _ = parse_bsrn_filename(f)
         if y is not None:
             ym_set.add((y, m))
-    return sorted(list(ym_set))
+    return sorted(ym_set)

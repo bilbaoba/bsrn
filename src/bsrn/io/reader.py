@@ -165,6 +165,22 @@ def read_bsrn_archive(path, include_lrs=None, strict=False):
 # ------------------------------------------------------------------ #
 
 
+def _try_parse_optional(raw_lines, lr_code, strict, parser, parser_args):
+    """
+    Run ``parser(*parser_args)`` for a non-empty block; apply *strict* on failure.
+    """
+    if not raw_lines:
+        return None
+    try:
+        return parser(*parser_args)
+    except Exception as exc:
+        if strict:
+            raise ValueError(
+                f"Failed to parse {lr_code} with strict=True."
+            ) from exc
+        return None
+
+
 def _parse_optional_lr(raw_lines, year_month, parser, lr_code, strict):
     """
     Parse an optional minute-series LR block.
@@ -173,16 +189,9 @@ def _parse_optional_lr(raw_lines, year_month, parser, lr_code, strict):
     the archive filename and is required for vector length checks on LR0300 /
     LR4000.
     """
-    if not raw_lines:
-        return None
-    try:
-        return parser(raw_lines, year_month)
-    except Exception as exc:
-        if strict:
-            raise ValueError(
-                f"Failed to parse {lr_code} with strict=True."
-            ) from exc
-        return None
+    return _try_parse_optional(
+        raw_lines, lr_code, strict, parser, (raw_lines, year_month),
+    )
 
 
 def _parse_optional_metadata_lr(raw_lines, parser, lr_code, strict):
@@ -191,16 +200,7 @@ def _parse_optional_metadata_lr(raw_lines, parser, lr_code, strict):
 
     ``parser`` is ``raw_lines -> model`` (for example :func:`_parse_lr0001`).
     """
-    if not raw_lines:
-        return None
-    try:
-        return parser(raw_lines)
-    except Exception as exc:
-        if strict:
-            raise ValueError(
-                f"Failed to parse {lr_code} with strict=True."
-            ) from exc
-        return None
+    return _try_parse_optional(raw_lines, lr_code, strict, parser, (raw_lines,))
 
 
 def _collect_lr_blocks(lines):
