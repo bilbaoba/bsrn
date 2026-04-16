@@ -370,12 +370,12 @@ Edit the `CONFIG` block at the top of `2.station_to_archive.py` for station-spec
 
 ## Project standards
 
-Development in this repository follows **`.agents/skills/project-rules/SKILL.md`**. In short:
+Development in this repository follows **`.cursor/rules/project-rules.mdc`** (Cursor rules; full BSRN standards there) and **`.cursor/rules/karpathy.mdc`** (general LLM coding guidelines: simplicity, surgical edits, verifiable goals). In short:
 
-- **Naming:** Use the radiometric **code names** from the skill (e.g. `ghi`, `bni`, `zenith`, `mu0`, `kt`, `Kt`, `ghi_extra`, `bni_extra`). In READMEs and technical docs, prefer **LaTeX-style symbols** (e.g. $G_h$, $B_n$, $k_t$) as there.
+- **Naming:** Use the radiometric **code names** from the rules (e.g. `ghi`, `bni`, `zenith`, `mu0`, `kt`, `Kt`, `ghi_extra`, `bni_extra`). In READMEs and technical docs, prefer **LaTeX-style symbols** (e.g. $G_h$, $B_n$, $k_t$) as there.
 - **Documentation:** Public functions use **NumPy-style docstrings in English** (`Parameters`, `Returns`, `Raises` when applicable; `References` when based on literature). **Do not** use `->` return annotations on `def` lines; describe returns in the docstring.
 - **BSRN data:** High-level workflows assume **one station archive file at a time** (e.g. one `XXXMMYY.dat.gz` per run); do not rely on silent multi-month concatenation inside the library.
-- **Figures (when contributing plots):** Prefer **vector PDF** output, **Times New Roman** typography, and the **Wong** (discrete) / **Viridis** (continuous) palette conventions described in the skill; save generated figures to the **project root**, not under `src/` or `tests/`.
+- **Figures (when contributing plots):** Prefer **vector PDF** output, **Times New Roman** typography, and the **Wong** (discrete) / **Viridis** (continuous) palette conventions described in the rules; save generated figures to the **project root**, not under `src/` or `tests/`.
 
 ## 📜 License
 

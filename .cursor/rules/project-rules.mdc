@@ -1,13 +1,13 @@
 ---
-name: bsrn-project-rules
 description: Standards and governance for the bsrn project, including naming conventions and documentation rules.
+alwaysApply: true
 ---
 
 # 🤖 Project Standards & Governance
 
 This document defines the naming conventions, scientific symbols, and documentation standards used throughout the `bsrn` project.
 
-**Contributors and automated agents** MUST read this skill **before** editing project code and **apply** the rules below (especially §Documentation — function signatures and docstrings). Treat it as binding, not background.
+**Contributors and automated agents** MUST read and **apply** the rules below before editing project code (especially §Documentation — function signatures and docstrings). Treat this file as binding, not background.
 
 ## 📏 Radiometric Parameters
 
@@ -210,3 +210,12 @@ def function_name(param):
     - In `theme()`: `legend_position="bottom"`, `legend_title=element_text(size=7)`, `legend_text=element_text(size=7)`, `legend_key_width=100`, `legend_key_height=5`, `legend_margin=-12`, `legend_box_spacing=0`. To add space between x-axis title and legend without shifting the legend, use `axis_title_x=element_text(size=7, margin={"b": 8})` (bottom margin in points). Use **9 pt** in those `element_text` calls when editing **timeseries** legends to match §Size above.
     - **Plot margin** (optional): `plot_margin_top`, `plot_margin_right`, `plot_margin_bottom`, `plot_margin_left` (each in `[0, 1]`; use 0 for no extra margin).
 
+---
+
+### 9. Repository layout & archive I/O
+
+- Package code lives under `src/bsrn/`; tests under `tests/`.
+- Archive logical records use Pydantic models in `src/bsrn/archive/`; station-to-archive I/O uses `read_bsrn_archive` and `BSRNDataset.from_file` patterns in the codebase.
+- Use **`from_file`** for loading an LR type from a `.dat.gz` path (do not introduce `load_from_file` or other aliases).
+- Prefer focused diffs: change only what the task requires; match existing style and naming.
+- If a task touches tutorials under `docs/tutorials/`, do not expand scope unless the user explicitly asks.
